@@ -1,0 +1,699 @@
+
+### Time Series Analysis--Project
+<br/>
+
+In this project, you will apply various time series modeling techniques to forecast monthly auto sales in the U.S. using data from January 1995 to December 2020. The data set contains five variables listed below
+
+* Month: a numeric variable that takes integer values from 1 to 12.
+* Autosales: a numeric variable that shows the level of auto sale of a month.
+* Inflation: a numeric variable that shows the change in price level in percentage.
+* PPI: producer price index that measures of the change in prices that domestic producers receive for their goods and services.
+* GasPrices: price of gasoline.
+
+The project will consist of the following parts:
+
+1. Exploratory Data Analysis and fit/hold-out sample split
+2. Univariate Time-series Models:
+    + 2.1 Constant Mean Model
+    + 2.2 Random Walk Model
+    + 2.3 Random Walk Model with Drift
+    + 2.4 Seasonal Dummies and Trend
+    + 2.5 Cyclical Trend Model
+3. Time Series Regression Models:
+    + 3.1 Discussion of independent variables. Correlation analysis and scatter plots
+    + 3.2 Regression modeling with external predictors
+4. Stochastic Time Series Models:
+    + 4.1 Analysis of modeling of deterministic time series model residuals
+    + 4.2 Analysis of modeling of regression model residuals
+    + 4.3 ARIMA models for variable of interest (with seasonal ARIMA components if applicable)
+5. Deterministic Model with Hybrid Time Trends
+<br/><br/>
+
+Libraries
+```{r}
+# Import all your libraries here
+library(TSA)
+library(forecast)
+library(skedastic)
+library(car)
+library(forecast)
+```
+
+Functions
+```{r}
+error_eval<-function(prediction,actual,type){
+    
+    # The function evaluates forecasting error based on predictions and actual values of the series
+    # 
+    # Inputs:
+    # 
+    # -predictions (numeric): a vector contains predicted values over time
+    # -actual (numeric): the actual values of the series
+    # -type (character): "mse" for mean squared error, "mape" for mean absolute percentage error
+    #
+    # Output:
+    #
+    # -error (numeric): a number shows the error based on the type specified.
+   if (type=="mse"){
+     mse=mean((actual-prediction)^2)
+     return (mse)
+   } 
+   if (type=="mape"){
+     mape=mean(abs((actual-prediction)/actual))*100
+     return (mape)
+   }
+    
+}
+```
+
+
+Part 1: Exploratory Data Analysis and fit/hold-out sample split
+
+1.1 Import raw data and show top 5 rows of the data set
+```{r}
+# your codes
+auto=read.csv("autosale.csv",header=TRUE)
+attach(auto)
+head(auto,5)
+```
+1.2 Create the time series plot of the series Autosales from Jan 1995 to Dec 2020. 
+```{r}
+# your codes
+autosales=ts(Autosales,start=c(1995,1),frequency=12)
+ts.plot(autosales,ylab="Sales Level", main="Autosales in the U.S. from Jan 1995 to Dec 2020")
+```
+
+1.3 Create monthly boxplot of the series Autosales.
+
+```{r}
+# your codes here
+boxplot(autosales/10^5~cycle(autosales),xlab="Month",ylab="Sales in (1000000s)")
+```
+
+
+
+1.4 Create the SACF of Autosales including the first 24 lags
+
+```{r}
+# your codes here
+acf(Autosales,lag=24)
+```
+
+
+1.5 Based on the time series plot, seasonal box plot, and the SACF, do you think the series is stationary? Please justify your answer in terms of trend, seasonality and autocorrelations.
+
+The series is not stationary because
+
+1. The time series plot shows a clear trend and seasionality
+2. Based on the SACF, sample autocorrelations decay very slowly and are significant for the first 25 lags.
+
+1.6 Split the orginal dataframe into two dataframes: period of fit that contains the first 287 rows, call it "fit", and hold-out sample that contains the rest of the data, call it "hold_out".
+
+```{r}
+# your codes
+fit=auto[1:287,]
+hold_out=auto[288:nrow(auto),]
+```
+
+Part 2: Univariate Time-series Models
+<br/><br/>
+2.1 *Constant Mean Model*
+<br/><br/>
+2.1.1 Perform a Box-perice test with 20 lags for Autosales using data belong to the period of fit.
+
+```{r}
+# your codes here
+Box.test(fit$Autosales,type=c("Box-Pierce"),lag=20)
+```
+
+2.1.2 What is your conclusion of the test? Based on your conclusion, do you think the constant mean model is appropriate for the series?
+
+Since the p-value of the Box-pierce is less than 5 percent, we reject the null hypothesis that there is no autocorrelation for the first 20 lags. Therefore, the constant mean model is not approporiate for the series.
+
+2.1.3 Regardless of the answer to 2.1.2, please fit a constant mean model and plot the predicted mean and 95% confidence interval against the actual series
+
+```{r}
+# your codes here
+n=length(fit$Autosales)
+ybar=mean(fit$Autosales)
+s_y=sd(fit$Autosales)
+
+UB=ybar + (qt(0.975,n-1)*s_y*sqrt(1+(1/n)))
+LB=ybar - (qt(0.975,n-1)*s_y*sqrt(1+(1/n)))
+
+fitPred_cm=array(0,c(3,length(fit$Autosales)))
+fitPred_cm[1,]=UB
+fitPred_cm[2,]=ybar
+fitPred_cm[3,]=LB
+
+ts.plot(fit$Autosales,col="red",main="Constant Mean: Prediction Vs Actual Series",ylab="Sales Level" )
+lines(fitPred_cm[1,],col="blue")
+lines(fitPred_cm[2,],col="blue")
+lines(fitPred_cm[3,],col="blue")
+```
+
+2.1.4 Please calculate and display the mse and mape associated with the hold-out sample
+
+```{r}
+#your codes here
+outPred_cm=array(0,c(3,length(hold_out$Autosales)))
+outPred_cm[1,]=UB
+outPred_cm[2,]=ybar
+outPred_cm[3,]=LB
+
+print(sprintf("The mse of the constant mean model is %.2f", error_eval(outPred_cm[2,],hold_out$Autosales,"mse")))
+
+print(sprintf("The mape of the constant mean model is %.2f percent", error_eval(outPred_cm[2,],hold_out$Autosales,"mape")))
+```
+
+2.2 *Random Walk*
+<br/><br/>
+2.2.1 Please obtain the first-differenced series and display side-by-side the plot of the differenced series and its SACF. 
+
+```{r}
+# your codes here
+diff_auto=diff(fit$Autosales,lag=1)
+
+par(mfrow=c(1,2))
+ts.plot(diff_auto,main="Differenced Autosales",ylab="Difference in Autosales")
+acf(diff_auto,main="ACF of Differenced Autosales")
+```
+
+2.2.2 Please perform a Box-pierce test for the differenced series. Do you think a random walk model is appropriate for autosale?
+
+```{r}
+Box.test(diff_auto,type="Box-Pierce",lag=20)
+```
+Based on the Box-Pierce of the differenced series, the random walk model is not appropriate for the series because the differenced series is not white noise.
+
+2.2.3 Regardless of your answer to 2.2.2, please fit a random walk model using the period of fit and plot the predicted values against the actual series.
+
+```{r}
+fitPred_rw=rep(0,length(fit$Autosales))
+for (t in 2:length(fit$Autosales)){
+  fitPred_rw[t]=fit$Autosales[t-1]
+}
+
+ts.plot(fit$Autosales[2:length(fit$Autosales)],ylab="Sales Level", main="Random Walk: Predicition VS Actual Series")
+lines(fitPred_rw[2:length(fit$Autosales)],col="red",type="o")
+```
+
+2.2.4 Using a Box-Pierce test, can you conclude that the residuals of the random walk model is WN?
+
+```{r}
+res_rw=fit$Autosales[2:length(fit$Autosales)]-fitPred_rw[2:length(fit$Autosales)]
+Box.test(res_rw,type="Box-Pierce",lag=20)
+```
+Since the p-value of the Box-Pierce test is less than 5 percent, we conclude the residual of the random walk model is not WN.
+
+2.2.5 Please calculate and display the mse and mape of the random walk model using the hold-out sample
+
+```{r}
+outPred_rw=rep(0,length(hold_out$Autosales))
+outPred_rw[]=fit$Autosales[length(fit$Autosales)]
+
+print(sprintf("The mse of the random walk model is %.2f", error_eval(outPred_rw,hold_out$Autosales,"mse")))
+
+print(sprintf("The mape of the random walk model is %.2f percent", error_eval(outPred_rw,hold_out$Autosales,"mape")))
+```
+
+2.3 *Random Walk with drift*
+<br/><br/>
+
+2.3.1 Suppose we want to fit the series using a random walk model with a drift term, please obtain the estimate of the drift term. 
+
+```{r}
+drift_fit=lm(diff_auto~1)
+summary(drift_fit)
+C=drift_fit$coef
+```
+
+2.3.2 Do you think the drift is necessary?
+
+Based on the large p-value of the drift term, the drift term is insignificant and unnecessary.
+
+2.3.3 Regardless of your answer to 2.2.2, please fit a random walk model with a drift term using the period of fit and plot the predicted values against the actual series.
+
+
+```{r}
+fitPred_rwd=rep(0,length(fit$Autosales))
+for (t in 2:length(fit$Autosales)){
+  fitPred_rwd[t]=fit$Autosales[t-1]+C
+}
+
+ts.plot(fit$Autosales[2:length(fit$Autosales)],ylab="Sales Level", main="Random Walk with Drift: Predicition VS Actual Series")
+lines(fitPred_rwd[2:length(fit$Autosales)],col="red",type="o")
+```
+
+2.3.4 Please calculate and display the mse and mape of the random walk model using the hold-out sample
+
+```{r}
+outPred_rwd=rep(0,length(hold_out$Autosales))
+outPred_rwd[1]=fit$Autosales[length(fit$Autosales)]
+for (t in 2:length(outPred_rwd)){
+  outPred_rwd[t]=outPred_rwd[t-1]+C
+}
+
+print(sprintf("The mse of the random walk model with drift is %.2f", error_eval(outPred_rwd,hold_out$Autosales,"mse")))
+
+print(sprintf("The mape of the random walk model with drift is %.2f percent", error_eval(outPred_rwd,hold_out$Autosales,"mape")))
+```
+
+2.3.5 Using a Box-Pierce test, can you conclude that the residuals of the random walk model with a drift is WN?
+
+```{r}
+res_rwd=fit$Autosales[2:length(fit$Autosales)]-fitPred_rwd[2:length(fit$Autosales)]
+Box.test(res_rwd,type="Box-Pierce",lag=20)
+```
+Based on the Box-Pierce test of the residual, we reject the null and conclude that the residuals of the random walk model with a drift is not WN.
+
+2.4 *Seasonal Dummies and Trend*
+<br/><br/>
+2.4.1 Create a time series plot of the log-transformed series of Autosale
+
+```{r}
+plot.ts(log(autosales),ylab="Log(Sales)",main="Log-transformed Autosales in the U.S. from Jan 1995 to Dec 2020")
+```
+
+
+2.4.2 Estimate a model for log-transformed Autosale with seasonal dummies and a linear trend
+
+```{r}
+time<-seq(1,length(fit$Autosales))
+month<-fit$Month
+seasonFit_1=lm(log(fit$Autosales)~time+as.factor(month))
+summary(seasonFit_1)
+```
+
+2.4.3 Estimate a model for log-transformed Autosale with seasonal dummies and a polynomial trend with order 5.
+
+```{r}
+seasonFit_5=lm(log(fit$Autosales)~poly(time,5)+as.factor(month))
+summary(seasonFit_5)
+```
+
+2.4.4 Based on adjusted R^2, do you prefer the model from 2.4.2 with a linear trend or the model from 2.4.3 with a polynomial trend?
+
+The model from 2.4.3. with higher order polynomials for the time trend has a higher adjusted R^2. Therefore, we prefer the model from 2.4.3.
+
+2.4.5 Based on the answer to 2.4.4, plot the predicted series against the actual series for the period of fit.
+
+```{r}
+fitPred_s5=exp(predict(seasonFit_5))
+ts.plot(fit$Autosales,ylab="Sales Level", main="Seasonal Dummies and Trend: Predicition VS Actual Series")
+lines(fitPred_s5,col="red")
+```
+
+2.4.6. Obtain the SACF of the residuals. Is the residual WN?
+
+```{r}
+res_s5=residuals(seasonFit_5)
+Box.test(res_s5,type="Box-Pierce",lag=20)
+```
+Based on the Box-Pierce test, the residuals of the seasonal dummies and trend model is not WN.
+
+2.4.7. Please calculate and display the mse and mape associated with the hold-out sample
+
+```{r}
+outPred_s5=exp(predict(seasonFit_5,data.frame(time=c(288:312),month=hold_out$Month)))
+
+print(sprintf("The mse of the seasonal dummies and trend model is %.2f", error_eval(outPred_s5,hold_out$Autosales,"mse")))
+
+print(sprintf("The mape of the seasonal dummies and trend model is %.2f percent", error_eval(outPred_s5,hold_out$Autosales,"mape")))
+```
+
+2.5 *Cyclical Trend Model*
+<br/><br/>
+
+2.5.1 Obtain the detrend series of Autosale (you are free to choose the order of polynomial for the time trend)
+
+```{r}
+detrend=lm(fit$Autosales~poly(time,5))
+prdgrm=periodogram(detrend$residuals,plot=FALSE)
+```
+
+2.5.2 Obtain and plot the periodogram of the detrended series.
+
+```{r}
+period=1/prdgrm$freq
+
+par(mfrow=c(1,2))
+periodogram(detrend$residuals,col="blue")
+plot(period,prdgrm$spec,type="h",col="blue",ylab="Peridogram")
+```
+
+2.5.3 What are the most important periods based on the periodogram? Are there any "hidden" periods larger than 12?
+
+```{r}
+frequency=prdgrm$freq
+amplitude=prdgrm$spec
+
+all <- data.frame(period, frequency,amplitude)
+head(all[order(-amplitude),],6)
+```
+Based on the table, we see that periods 12, 72, 96, 2.4, 3, and 4 have much larger amplitudes than other periods. Since 72 and 96 are larger than 12, the length of seasonality, we conclude that there are hidden cycles.
+
+
+2.5.4 Create the necessary since and cosine paris based on the periods you have identified in 2.5.3 and fit a cyclical model with polynomial trend (the order of the polynomial should be consistent with 2.5.1)
+
+```{r}
+n=length(fit$Autosales)
+
+cos2.4=cos(2*pi*(2.4/n)*time)
+sin2.4=sin(2*pi*(2.4/n)*time)
+
+cos3=cos(2*pi*(3/n)*time)
+sin3=sin(2*pi*(3/n)*time)
+
+cos12=cos(2*pi*(12/n)*time)
+sin12=sin(2*pi*(12/n)*time)
+
+cos72=cos(2*pi*(72/n)*time)
+sin72=sin(2*pi*(72/n)*time)
+
+cos96=cos(2*pi*(96/n)*time)
+sin96=sin(2*pi*(96/n)*time)
+
+cycleFit=lm(fit$Autosales~poly(time,5)+cos2.4+sin2.4+cos3+sin3+cos12+sin12+cos72+sin72+cos96+sin96)
+summary(cycleFit)
+```
+
+2.5.5 Plot the predicted against the actual series for the period of fit
+
+```{r}
+fitPred_cycle=predict(cycleFit)
+ts.plot(fit$Autosales,ylab="Sales Level", main="Cyclical Trend Model: Predicition VS Actual Series")
+lines(fitPred_cycle,col="red")
+```
+
+
+2.5.6 Obtain the SACF of the residuals. Is the residual WN?
+
+```{r}
+res_cycle=residuals(cycleFit)
+Box.test(res_cycle,type="Box-Pierce",lag=20)
+```
+Based on the Box-Pierce test, the residuals of the cyclical trend model is not WN.
+
+2.5.7 Please calculate and display the mse and mape associated with the hold-out sample
+
+```{r}
+time_o=c(288:312)
+
+cos2.4_o=cos(2*pi*(2.4/n)*time_o)
+sin2.4_o=sin(2*pi*(2.4/n)*time_o)
+
+cos3_o=cos(2*pi*(3/n)*time_o)
+sin3_o=sin(2*pi*(3/n)*time_o)
+
+cos12_o=cos(2*pi*(12/n)*time_o)
+sin12_o=sin(2*pi*(12/n)*time_o)
+
+cos72_o=cos(2*pi*(72/n)*time_o)
+sin72_o=sin(2*pi*(72/n)*time_o)
+
+cos96_o=cos(2*pi*(96/n)*time_o)
+sin96_o=sin(2*pi*(96/n)*time_o)
+
+outPred_cycle=predict(cycleFit,data.frame(time=time_o,cos2.4=cos2.4_o,sin2.4=sin2.4_o,cos3=cos3_o,sin3=sin3_o,cos12=cos12_o,sin12=sin12_o,cos72=cos72_o,sin72=sin72_o,cos96=cos96_o,sin96=sin96_o))
+
+print(sprintf("The mse of the seasonal dummies and trend model is %.2f", error_eval(outPred_cycle,hold_out$Autosales,"mse")))
+
+print(sprintf("The mape of the seasonal dummies and trend model is %.2f percent", error_eval(outPred_cycle,hold_out$Autosales,"mape")))
+```
+
+Part 3: Time Series Regression Models
+<br/><br/>
+
+3.1 Create scatter plots and correlation estimates of all variables.
+```{r}
+pairs(fit[,c("Autosales","Inflation","Unemploy","PPI","GasPrices")],lower.panel = NULL, col="blue")
+
+cor.test(fit$Autosales,fit$Inflation)
+cor.test(fit$Autosales,fit$Unemploy)
+cor.test(fit$Autosales,fit$PPI)
+cor.test(fit$Autosales,fit$GasPrices)
+```
+
+3.2 Based on 3.1, do you think any of these predictors are informative in predicting autosale?
+
+Based on the correlation tests between autosales and each one of the predictors, we conclude that all predictors are unconditionally informative in predicting autosales due to the small p-value of their respective correlation test. 
+
+3.3 Estimate the regression model for autosale using all independent variables based on the period of fit.
+
+```{r}
+inflation=fit$Inflation
+unemploy=fit$Unemploy
+ppi=fit$PPI
+gasPrice=fit$GasPrices
+
+mlrfit=lm(fit$Autosales~inflation+unemploy+ppi+gasPrice)
+summary(mlrfit)
+```
+
+3.4 Plot the fitted values against the actual series for the period of fit.
+
+```{r}
+fitPred_mlr=predict(mlrfit)
+ts.plot(fit$Autosales,ylab="Sales Level", main="Multiple Linear Regression: Predicition VS Actual Series")
+lines(fitPred_mlr,col="red")
+```
+
+3.5 Obtain residuals of the model. Are the residuals WN? 
+
+```{r}
+res_mlr=residuals(mlrfit)
+Box.test(res_mlr,type="Box-Pierce",lag=20)
+```
+Based on the Box-Pierce test, the residuals of the multiple linear regression model is not WN.
+
+3.6 Is the constant variance assumption for the residuals violated based on the white test?
+
+```{r}
+white(mlrfit,interactions = TRUE)
+```
+Based on the white test, we reject the null that the variance is constant due to the small p-value.
+
+3.7 Is there any multicollinearity problem? If yes, what variable(s) would you like to drop from the model
+
+```{r}
+vif(mlrfit)
+```
+None of the VIFs is larger than 10 and multicollinearity is not an issue.
+
+3.8 Please calculate and display the mse and mape associated with the hold-out sample
+
+```{r}
+outPred_mlr=predict(mlrfit,data.frame(inflation=hold_out$Inflation,unemploy=hold_out$Unemploy,ppi=hold_out$PPI,gasPrice=hold_out$GasPrices))
+
+print(sprintf("The mse of multiple linear regression model is %.2f", error_eval(outPred_mlr,hold_out$Autosales,"mse")))
+
+print(sprintf("The mape of multiple linear regression model is %.2f percent", error_eval(outPred_mlr,hold_out$Autosales,"mape")))
+```
+
+Part 4: Stochastic Time Series Models
+<br/><br/>
+4.1 *Analysis of modeling of deterministic time series model residuals*
+<br/><br/>
+
+4.1.1 If the residuals from 2.4.6 are not WN, please show ACF and PACF of the residuals
+
+```{r}
+# your codes here
+acf(res_s5, col = 'blue')
+pacf(res_s5, col = 'blue')
+```
+
+4.1.2 Based on the ACF and PACF, identify the most appropriate ARIMA(p,d,q) model for the residuals and and explain your reasoning.
+
+```{r}
+# your answers here
+# The model might be ARIMA(2,0,1), because acf and pacf decay both quickly, and both acf and pacf did not chop off after a specific lag，also the lowest mape. 
+```
+
+4.1.3 Please plot the predictions of the error correction model against the actual series for the preiod of fit.
+
+```{r}
+# your codes here
+arma<-Arima(fitPred_s5, order = c(2,0,1))
+#Checking the residuals
+fitpred_arma1=fitted(arma)
+ts.plot(fit$Autosales, col = "red")
+lines(fitpred_arma1,col="blue",lwd=2)
+
+```
+
+4.1.4 Please calculate and display the mse and mape of the model associated with the hold-out sample.
+
+```{r}
+# your codes here
+#outPred_mlr=predict(mlrfit,data.frame(inflation=hold_out$Inflation,unemploy=hold_out$Unemploy,ppi=hold_out$PPI,gasPrice=hold_out$GasPrices))
+
+#print(sprintf("The mse of multiple linear regression model is %.2f", error_eval(outPred_mlr,hold_out$Autosales,"mse")))
+
+#print(sprintf("The mape of multiple linear regression model is %.2f percent", error_eval(outPred_mlr,hold_out$Autosales,"mape")))
+
+forecast_length = length(hold_out$Autosales)
+fitPred_s5_arima = forecast(arma, h = forecast_length)
+
+print(sprintf("The mse of ARIMA model is %.2f", error_eval(fitPred_s5_arima$mean, hold_out$Autosales, "mse")))
+
+print(sprintf("The mape of ARIMA model is %.2f percent", error_eval(fitPred_s5_arima$mean, hold_out$Autosales, "mape")))
+
+
+```
+4.2 *Analysis of modeling of regression model residuals*
+<br/><br/>
+
+4.2.1 If the residuals from 3.5 are not WN, please show ACF and PACF of the residuals
+
+```{r}
+# your codes here
+acf(res_mlr, col = 'blue')
+pacf(res_mlr, col = 'blue')
+```
+
+4.2.2 Based on the ACF and PACF, identify the most appropriate ARIMA(p,d,q) model for the residuals and and explain your reasoning.
+
+```{r}
+# your answers here
+# The model might be ARIMA(1,0,2), because acf and pacf decay both quickly, and both acf and pacf did not chop off after a specific lag. 
+```
+
+4.2.3 Please plot the predictions of the error correction model against the actual series for the preiod of fit.
+
+```{r}
+arma2<-Arima(fitPred_mlr, order = c(1,0,2))
+#Checking the residuals
+fitpred_arma2=fitted(arma2)
+ts.plot(fit$Autosales, col = "red")
+lines(fitpred_arma2,col="blue",lwd=2)
+```
+
+4.2.4 Please calculate and display the mse and mape of the model associated with the hold-out sample.
+
+```{r}
+forecast_length = length(hold_out$Autosales)
+outPred_mlr_arima = forecast(arma2, h = forecast_length)
+
+print(sprintf("The mse of ARIMA model is %.2f", error_eval(outPred_mlr_arima$mean, hold_out$Autosales, "mse")))
+
+print(sprintf("The mape of ARIMA model is %.2f percent", error_eval(outPred_mlr_arima$mean, hold_out$Autosales, "mape")))
+
+```
+4.3 *ARIMA models for variable of interest (with seasonal ARIMA components if applicable)*
+<br/><br/>
+4.3.1 Please take the log transformation of the original series and display the ACF of the transformed series after taking the first difference.
+
+```{r}
+# your codes here
+acf(diff(log(fit$Autosales)),col="blue",lag=48)
+```
+
+4.3.2 Based on the ACF from 4.3.1, is the differenced series stationary at nonseasonal lags? If not, please take a 2nd order difference and check the ACF.
+
+```{r}
+# your answers here
+acf(diff(diff(log(fit$Autosales))),col="blue")
+```
+
+4.3.3 If the series is not stationary at seasonal lags, please take one more difference at the seasonal lags and display the ACF.
+
+```{r}
+# your codes here
+# your answers here
+#acf(diff(diff(log(fit$Autosales)), lag=12),lag=48,col="blue",ylim=c(-0.4,1))
+acf(diff(diff(diff(log(fit$Autosales))),lag=12))
+```
+
+4.3.4. Is the differenced series stationary at seasonal lag? If not, please take a 2nd difference at the seasonal lags and check the ACF.
+
+```{r}
+# your answers here
+#acf(diff(diff(diff(log(fit$Autosales)), lag=12), lag=12),lag=48,col="blue",ylim=c(-0.4,1))
+acf(diff(diff(diff(diff(log(fit$Autosales),lag=12),lag=24)),col="blue"))
+```
+
+4.3.5. After taking necessary differencing to make the series stationary at seasonal and non-seasonal lags, please display side-by-side the ACF and PACF of the differenced series.
+
+```{r}
+# your answers here
+#acf(diff(diff(diff(diff(log(fit$Autosales)), lag=12), lag=12), lag=12),lag=48,col="blue",ylim=c(-0.4,1))
+acf(diff(diff(diff(diff(log(fit$Autosales),lag=12),lag=24)),col="blue"))
+pacf(diff(diff(diff(diff(log(fit$Autosales),lag=12),lag=24)),col="blue"))
+```
+
+
+```{r}
+acf(diff(diff(log(fit$Autosales))),col="blue")
+pacf(diff(diff(log(fit$Autosales))),col="blue")
+```
+
+4.4.5 Based on 4.3.5, please identify a seaonsal ARIMA(p,d,q)*(P,Q,D)s model for the series and explain your reasoning
+```{r}
+#your answers here
+#(0,2,1)*(0,2,1), for seasonal and nonseasonal, we take both 2nd order difference and find the order of MA is 1.
+```
+
+4.4.6 Please plot the predicted values against the actual series for the period of fit.
+
+```{r}
+#your codes here
+arima3 <- Arima(fit$Autosales, order = c(0, 2, 1), seasonal=list(order=c(0,2,1),
+period=12),lambda=0)
+pred3=fitted(arima3)
+plot.ts(fit$Autosales,col="blue",type="b",lwd=1)
+lines(pred3,col="red",lwd=2)
+```
+
+4.4.7 Please calculate and display the mse and mape of the model associated with the hold-out sample.
+
+```{r}
+#your codes here
+forecast_length = length(hold_out$Autosales)
+outPred_sea_arima = forecast(arima3, h = forecast_length)
+
+print(sprintf("The mse of ARIMA model is %.2f", error_eval(outPred_sea_arima$mean, hold_out$Autosales, "mse")))
+
+print(sprintf("The mape of ARIMA model is %.2f percent", error_eval(outPred_sea_arima$mean, hold_out$Autosales, "mape")))
+
+```
+
+Part 5: Deterministic Model with Hybrid Time Trends
+
+5.1 Create a dummy variable that takes the value of 0 for the first 179 observations and 1 for the rest of the observations. Next, estimate and display the summary of a seasonal dummies and trend  regression model with a polynomial trend of order 2 for the time trend and interact the dummy variable created with the quadratic trend term. 
+
+```{r}
+# your codes here
+d <- c(rep(0,179),rep(1,133))
+auto$d <- d
+fit=auto[1:287,]
+hold_out=auto[288:nrow(auto),]
+dummy <- fit$d
+time_square=time**2
+new_dummy=time_square*dummy
+fitd=lm(fit$Autosales~time+new_dummy+as.factor(month))
+summary(fitd)
+```
+
+5.2 Plot the predicted vs actual series for the period of fit.
+
+```{r}
+#your codes here
+predd=predict(fitd)
+ts.plot(fit$Autosales,ylab="Sales Level", main="Seasonal Dummies and Trend: Predicition VS Actual Series")
+lines(predd,col="red")
+```
+
+5.3 Please calculate and display the mse and mape of the model associated with the hold-out sample. Is the model with hybrid time trends better the one from 2.4?
+
+```{r}
+time_square_holdout=c(288:312)*2
+new_dummy_holdout=hold_out$d*time_square_holdout
+outPredd=predict(fitd,data.frame(time=c(288:312),month=hold_out$Month,dummy=hold_out$d, time_square=time_square_holdout,new_dummy=new_dummy_holdout))
+
+print(sprintf("The mse of the seasonal dummies and trend model is %.2f", error_eval(outPredd,hold_out$Autosales,"mse")))
+
+print(sprintf("The mape of the seasonal dummies and trend model is %.2f percent", error_eval(outPredd,hold_out$Autosales,"mape")))
+```
+
